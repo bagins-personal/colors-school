@@ -78,10 +78,6 @@ section { padding: 72px 0; }
 
 /* ---------- Header ---------- */
 .site-header { position: sticky; top: 0; z-index: 50; background: rgba(255,249,238,.92); backdrop-filter: blur(10px); box-shadow: 0 2px 0 rgba(43,45,66,.06); }
-.ticker { background: var(--ink); color: #fff; overflow: hidden; font-weight: 700; font-size: .9rem; }
-.ticker-track { display: flex; gap: 60px; width: max-content; padding: 7px 0; animation: scroll 40s linear infinite; }
-.ticker:hover .ticker-track { animation-play-state: paused; }
-@keyframes scroll { to { transform: translateX(-50%) } }
 .nav { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; gap: 20px; }
 .brand { display: flex; flex-direction: column; line-height: 1; }
 .brand small { font-weight: 800; color: var(--muted); font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; }

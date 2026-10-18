@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Link, useLocation } from 'react-router-dom'
 import Logo from './Logo'
-import { announcements } from '../data'
 
 const links = [
   { to: '/', label: 'Home', emoji: '🏠' },
@@ -24,15 +23,6 @@ export default function Header() {
 
   return (
     <header className="site-header">
-      <div className="ticker" role="marquee">
-        <div className="ticker-track">
-          {[...announcements, ...announcements].map((a, i) => (
-            <span key={i} className="ticker-item">
-              {a.icon} {a.title}
-            </span>
-          ))}
-        </div>
-      </div>
       <nav className="nav container">
         <Link to="/" className="brand">
           <Logo />
