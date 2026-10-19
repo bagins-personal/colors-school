@@ -6,7 +6,12 @@ import EventItem from '../components/EventItem'
 import PhotoTile from '../components/PhotoTile'
 import Lightbox from '../components/Lightbox'
 import CountUp from '../components/CountUp'
-import { school, programs, stats, events, news, gallery, announcements, formatDate } from '../data'
+import SanityImage from '../components/SanityImage'
+import { LoadingCards, ErrorNote, EmptyNote } from '../components/ContentState'
+import useSanityQuery from '../hooks/useSanityQuery'
+import { EVENTS_QUERY, ANNOUNCEMENTS_QUERY, ARTICLES_QUERY, GALLERY_QUERY, CONTACT_QUERY } from '../lib/queries'
+import { isFuture, eventState } from '../lib/events'
+import { school, programs, stats, formatDate, colorFor } from '../data'
 
 const floaties = [
   { e: '🖍️', s: { left: '6%', top: '14%' } },
@@ -18,10 +23,19 @@ const floaties = [
 
 export default function Home() {
   const [lb, setLb] = useState(null)
-  const today = new Date().toISOString().slice(0, 10)
-  const upcoming = events.filter((e) => e.date >= today).slice(0, 3)
-  const preview = gallery.slice(0, 4)
-  const topAnnouncement = announcements[0]
+  const events = useSanityQuery(EVENTS_QUERY)
+  const ann = useSanityQuery(ANNOUNCEMENTS_QUERY)
+  const art = useSanityQuery(ARTICLES_QUERY)
+  const gallery = useSanityQuery(GALLERY_QUERY)
+  const { data: contact } = useSanityQuery(CONTACT_QUERY)
+  const allEvents = events.data || []
+  const upcoming = allEvents.filter((e) => isFuture(e) && eventState(e) !== 'cancelled').slice(0, 3)
+  const isAnnouncement = (n) => n._type === 'announcement'
+  // Latest News mixes announcements and articles, newest first
+  const latest = [...(ann.data || []), ...(art.data || [])].sort((x, y) => (y.date > x.date ? 1 : -1)).slice(0, 3)
+  const updates = { loading: ann.loading || art.loading, error: ann.error || art.error }
+  const preview = (gallery.data || []).slice(0, 4)
+  const topAnnouncement = ann.data?.[0]
   const close = useCallback(() => setLb(null), [])
   const move = useCallback((d) => setLb((i) => (i + d + preview.length) % preview.length), [preview.length])
 
@@ -42,16 +56,18 @@ export default function Home() {
         </div>
       </section>
 
-      <div className="container">
-        <article className="card announce urgent" style={{ marginTop: -40 }}>
-          <span className="ico">{topAnnouncement.icon}</span>
-          <div>
-            <span className="date">Announcement · {formatDate(topAnnouncement.date)}</span>
-            <h3>{topAnnouncement.title}</h3>
-            <p>{topAnnouncement.text} <Link to="/news#announcements" style={{ color: 'var(--blue)', fontWeight: 800 }}>See all announcements →</Link></p>
-          </div>
-        </article>
-      </div>
+      {topAnnouncement && (
+        <div className="container">
+          <article className="card announce urgent" style={{ marginTop: -40 }}>
+            <span className="ico">📢</span>
+            <div>
+              <span className="date">Announcement · {formatDate(topAnnouncement.date)}</span>
+              <h3>{topAnnouncement.title}</h3>
+              <p>{topAnnouncement.summary} <Link to="/news#announcements" style={{ color: 'var(--blue)', fontWeight: 800 }}>See all announcements →</Link></p>
+            </div>
+          </article>
+        </div>
+      )}
 
       <section>
         <div className="container">
@@ -89,37 +105,69 @@ export default function Home() {
               <h2>📅 Upcoming Events</h2>
               <Link to="/events">All events →</Link>
             </div>
-            {upcoming.map((e) => <EventItem key={e.id} event={e} />)}
+            {events.loading ? (
+              <LoadingCards count={2} height={130} />
+            ) : upcoming.length ? (
+              upcoming.map((e) => <EventItem key={e._id} event={e} index={allEvents.indexOf(e)} />)
+            ) : events.error ? (
+              <ErrorNote error={events.error} />
+            ) : (
+              <EmptyNote>No upcoming events yet — check back soon! 🌟</EmptyNote>
+            )}
           </div>
           <div>
             <div className="row-head">
               <h2>📰 Latest News</h2>
               <Link to="/news">More →</Link>
             </div>
-            {news.slice(0, 3).map((n) => (
-              <Link to="/news" key={n.id} className="card announce" style={{ '--c': n.color, marginBottom: 16 }}>
-                <span className="ico">{n.icon}</span>
-                <div>
-                  <span className="date" style={{ color: 'var(--muted)' }}>{n.category} · {formatDate(n.date)}</span>
-                  <h3>{n.title}</h3>
-                </div>
-              </Link>
-            ))}
+            {updates.loading ? (
+              <LoadingCards count={2} height={100} />
+            ) : latest.length ? (
+              latest.map((n) => (
+                <Link
+                  to={isAnnouncement(n) ? '/news#announcements' : '/news'}
+                  key={n._id}
+                  className="card announce"
+                  style={{ '--c': colorFor(n.category || n.title), marginBottom: 16 }}
+                >
+                  <SanityImage
+                    image={n.mainImage}
+                    className="news-mini"
+                    aspect={1}
+                    sizes="64px"
+                    maxWidth={320}
+                    fallback={<span className="ico">{isAnnouncement(n) ? '📢' : '📰'}</span>}
+                  />
+                  <div>
+                    <span className="date" style={{ color: 'var(--muted)' }}>{[isAnnouncement(n) ? 'Announcement' : n.category, formatDate(n.date)].filter(Boolean).join(' · ')}</span>
+                    <h3>{n.title}</h3>
+                  </div>
+                </Link>
+              ))
+            ) : updates.error ? (
+              <ErrorNote error={updates.error} />
+            ) : (
+              <EmptyNote>News is coming soon! 📰</EmptyNote>
+            )}
           </div>
         </div>
       </section>
 
+      {(gallery.loading || preview.length > 0) && (
       <section className="bg-white">
         <div className="container">
           <SectionTitle eyebrow="📸 Gallery" title="Snapshots of happy days" />
           <div className="gallery-grid">
-            {preview.map((g, i) => <PhotoTile key={g.id} item={g} onClick={() => setLb(i)} />)}
+            {gallery.loading
+              ? <LoadingCards count={4} height={240} />
+              : preview.map((g, i) => <PhotoTile key={g._id} item={g} index={i} onClick={() => setLb(i)} />)}
           </div>
           <p className="center" style={{ marginTop: 30 }}>
             <Link to="/gallery" className="btn btn-green">See the full gallery →</Link>
           </p>
         </div>
       </section>
+      )}
 
       <section>
         <div className="container">
@@ -128,7 +176,9 @@ export default function Home() {
             <p>Book a campus tour and see our classrooms, playground and library in action.</p>
             <div className="btns">
               <Link to="/about#enroll" className="btn btn-pink">Book a tour</Link>
-              <a href={`tel:${school.phone}`} className="btn">📞 {school.phone}</a>
+              {contact?.phone && (
+                <a href={`tel:${contact.phone.replace(/[^\d+]/g, '')}`} className="btn">📞 {contact.phone}</a>
+              )}
             </div>
           </div>
         </div>

@@ -1,14 +1,24 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import PageHero from '../components/PageHero'
-import EventItem, { categoryColor } from '../components/EventItem'
-import { events, eventCategories, formatDate } from '../data'
+import EventItem from '../components/EventItem'
+import { ContentState, LoadingCards } from '../components/ContentState'
+import useSanityQuery from '../hooks/useSanityQuery'
+import { EVENTS_QUERY } from '../lib/queries'
+import { eventState, isFuture, stateColor } from '../lib/events'
+import { formatDate, dayKey, palette } from '../data'
 
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const FILTERS = [
+  { key: 'all', label: 'All' },
+  { key: 'upcoming', label: 'Upcoming' },
+  { key: 'completed', label: 'Completed' },
+  { key: 'cancelled', label: 'Cancelled' },
+]
 const pad = (n) => String(n).padStart(2, '0')
 
 function Countdown({ event }) {
-  const target = new Date(event.date + 'T08:00:00').getTime()
-  const [now, setNow] = useState(Date.now())
+  const target = new Date(event.startDateTime).getTime()
+  const [now, setNow] = useState(Date.now)
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(t)
@@ -22,7 +32,7 @@ function Countdown({ event }) {
   ]
   return (
     <div className="countdown">
-      <h3>⏰ Next up: {event.icon} {event.title}</h3>
+      <h3>⏰ Next up: {event.title}</h3>
       <div className="count-boxes">
         {parts.map(([label, v]) => (
           <div key={label}><strong>{v}</strong><span>{label}</span></div>
@@ -33,13 +43,15 @@ function Countdown({ event }) {
 }
 
 function Calendar({ list }) {
-  const first = list[0] ? new Date(list[0].date + 'T00:00:00') : new Date()
-  const [month, setMonth] = useState(new Date(first.getFullYear(), first.getMonth(), 1))
+  const [month, setMonth] = useState(() => {
+    const first = new Date(list[0]?.startDateTime ?? Date.now())
+    return new Date(first.getFullYear(), first.getMonth(), 1)
+  })
+  const [todayKey] = useState(() => dayKey(Date.now()))
   const y = month.getFullYear()
   const m = month.getMonth()
   const days = new Date(y, m + 1, 0).getDate()
   const offset = new Date(y, m, 1).getDay()
-  const todayIso = new Date().toISOString().slice(0, 10)
   const cells = [...Array(offset).fill(null), ...Array.from({ length: days }, (_, i) => i + 1)]
 
   return (
@@ -53,16 +65,24 @@ function Calendar({ list }) {
         {DOW.map((d) => <div key={d} className="cal-dow">{d}</div>)}
         {cells.map((d, i) => {
           if (!d) return <div key={i} className="cal-day empty" />
-          const iso = `${y}-${pad(m + 1)}-${pad(d)}`
-          const evs = list.filter((e) => e.date === iso)
+          const key = `${y}-${pad(m + 1)}-${pad(d)}`
+          const evs = list.filter((e) => dayKey(e.startDateTime) === key)
           return (
-            <div key={i} className={`cal-day ${iso === todayIso ? 'today' : ''}`}>
+            <div key={i} className={`cal-day ${key === todayKey ? 'today' : ''}`}>
               {d}
-              {evs.map((e) => (
-                <span key={e.id} className="cal-ev" style={{ '--c': categoryColor[e.category] }} title={e.title}>
-                  {e.icon} {e.title}
-                </span>
-              ))}
+              {evs.map((e) => {
+                const state = eventState(e)
+                return (
+                  <span
+                    key={e._id}
+                    className={`cal-ev ${state}`}
+                    style={{ '--c': state === 'upcoming' ? palette[list.indexOf(e) % palette.length] : stateColor[state] }}
+                    title={`${e.title}${state !== 'upcoming' ? ` (${state})` : ''}`}
+                  >
+                    {e.title}
+                  </span>
+                )
+              })}
             </div>
           )
         })}
@@ -72,21 +92,21 @@ function Calendar({ list }) {
 }
 
 export default function Events() {
-  const [cat, setCat] = useState('All')
+  const [filter, setFilter] = useState('all')
   const [view, setView] = useState('list')
-  const today = new Date().toISOString().slice(0, 10)
+  const [now] = useState(Date.now)
+  const { data, loading, error } = useSanityQuery(EVENTS_QUERY)
+  const all = data || []
 
-  const filtered = useMemo(
-    () => events.filter((e) => cat === 'All' || e.category === cat),
-    [cat],
-  )
-  const upcoming = filtered.filter((e) => e.date >= today)
-  const past = filtered.filter((e) => e.date < today)
-  const next = events.find((e) => e.date >= today)
+  const filtered = all.filter((e) => filter === 'all' || eventState(e) === filter)
+  // Future events first (soonest first), then past/completed events (most recent first)
+  const future = filtered.filter((e) => isFuture(e))
+  const past = filtered.filter((e) => !isFuture(e)).reverse()
+  const next = all.find((e) => eventState(e) === 'upcoming' && new Date(e.startDateTime) > now)
+  const colorIndex = (e) => all.indexOf(e)
 
-  // Group upcoming events by month for the list view
-  const byMonth = upcoming.reduce((acc, e) => {
-    const key = formatDate(e.date, { month: 'long', year: 'numeric' })
+  const byMonth = future.reduce((acc, e) => {
+    const key = formatDate(e.startDateTime, { month: 'long', year: 'numeric' })
     ;(acc[key] ||= []).push(e)
     return acc
   }, {})
@@ -98,9 +118,9 @@ export default function Events() {
         <div className="container" style={{ maxWidth: 900 }}>
           {next && <Countdown event={next} />}
 
-          <div className="chips" role="group" aria-label="Filter by category">
-            {eventCategories.map((c) => (
-              <button key={c} className={`chip ${cat === c ? 'active' : ''}`} onClick={() => setCat(c)}>{c}</button>
+          <div className="chips" role="group" aria-label="Filter by status">
+            {FILTERS.map((f) => (
+              <button key={f.key} className={`chip ${filter === f.key ? 'active' : ''}`} onClick={() => setFilter(f.key)}>{f.label}</button>
             ))}
           </div>
           <div className="view-toggle">
@@ -108,25 +128,38 @@ export default function Events() {
             <button className={`btn btn-sm ${view === 'calendar' ? '' : 'btn-white'}`} onClick={() => setView('calendar')}>🗓️ Calendar</button>
           </div>
 
-          {view === 'calendar' ? (
-            <Calendar list={upcoming.length ? upcoming : filtered} />
-          ) : (
-            <>
-              {Object.entries(byMonth).map(([month, list]) => (
-                <div key={month} style={{ marginBottom: 34 }}>
-                  <h2>{month}</h2>
-                  {list.map((e) => <EventItem key={e.id} event={e} />)}
-                </div>
-              ))}
-              {!upcoming.length && <p className="empty">No upcoming {cat.toLowerCase()} events yet — check back soon! 🌟</p>}
-              {past.length > 0 && (
+          <ContentState
+            loading={loading}
+            error={error}
+            isEmpty={!all.length}
+            empty="No events have been posted yet — check back soon! 🌟"
+            skeleton={<LoadingCards count={3} height={130} />}
+          >
+            {() =>
+              view === 'calendar' ? (
+                <Calendar list={future.length ? future : filtered} />
+              ) : (
                 <>
-                  <h2>Past events</h2>
-                  {past.map((e) => <EventItem key={e.id} event={e} past />)}
+                  {Object.entries(byMonth).map(([month, list]) => (
+                    <div key={month} style={{ marginBottom: 34 }}>
+                      <h2>{month}</h2>
+                      {list.map((e) => <EventItem key={e._id} event={e} index={colorIndex(e)} />)}
+                    </div>
+                  ))}
+                  {!future.length && !past.length && <p className="empty">No {filter} events right now. 🌟</p>}
+                  {!future.length && past.length > 0 && filter === 'all' && (
+                    <p className="empty">No upcoming events yet — check back soon! 🌟</p>
+                  )}
+                  {past.length > 0 && (
+                    <>
+                      <h2>{filter === 'cancelled' ? 'Cancelled events' : 'Past events'}</h2>
+                      {past.map((e) => <EventItem key={e._id} event={e} index={colorIndex(e)} />)}
+                    </>
+                  )}
                 </>
-              )}
-            </>
-          )}
+              )
+            }
+          </ContentState>
         </div>
       </section>
     </>

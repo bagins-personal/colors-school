@@ -1,7 +1,48 @@
 import { useState } from 'react'
 import PageHero from '../components/PageHero'
 import SectionTitle from '../components/SectionTitle'
-import { school, values, teachers, milestones, palette } from '../data'
+import SanityImage from '../components/SanityImage'
+import RichText from '../components/RichText'
+import { ContentState, LoadingCards, ErrorNote } from '../components/ContentState'
+import useSanityQuery from '../hooks/useSanityQuery'
+import { ABOUT_QUERY, CONTACT_QUERY } from '../lib/queries'
+import { palette } from '../data'
+
+const teacherEmojis = ['👩‍🏫', '👨‍🏫', '🧑‍🏫', '👩‍🎨', '🧑‍🔬', '📖']
+
+function Teacher({ t, i }) {
+  const [open, setOpen] = useState(false)
+  const color = palette[i % palette.length]
+  return (
+    <article className="card team" style={{ '--c': color }}>
+      <div className="avatar">
+        <SanityImage
+          image={t.photo}
+          aspect={1}
+          sizes="110px"
+          maxWidth={480}
+          alt={t.photo?.alt || t.name}
+          fallback={<span aria-hidden="true">{teacherEmojis[i % teacherEmojis.length]}</span>}
+        />
+      </div>
+      <h3>{t.name}</h3>
+      {t.role && <p>{t.role}</p>}
+      {t.subjects?.length > 0 && (
+        <div className="subject-tags">
+          {t.subjects.map((sub) => <span key={sub} className="tag" style={{ '--c': color }}>{sub}</span>)}
+        </div>
+      )}
+      {t.bio?.length > 0 && (
+        <>
+          {open && <RichText value={t.bio} className="team-bio" />}
+          <button className="read-more" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+            {open ? 'Hide bio ↑' : 'Read bio →'}
+          </button>
+        </>
+      )}
+    </article>
+  )
+}
 
 function EnrollForm() {
   const [sent, setSent] = useState(false)
@@ -62,89 +103,131 @@ function EnrollForm() {
 }
 
 export default function About() {
+  const about = useSanityQuery(ABOUT_QUERY)
+  const contact = useSanityQuery(CONTACT_QUERY)
+  const a = about.data || {}
+  const milestones = a.milestones || []
+  const values = a.coreValues || []
+  const team = a.leaders || []
+  const c = contact.data || {}
+  const checklist = (c.checklist || []).filter(Boolean)
+
   return (
     <>
-      <PageHero emoji="🌈" title="About COLORS" subtitle={`Nurturing curious, kind and confident children since ${school.founded}.`} color="var(--purple)" />
+      <PageHero emoji="🌈" title={a.title || 'About COLORS'} subtitle="Nurturing curious, kind and confident children." color="var(--purple)" />
 
       <section>
         <div className="container">
           <SectionTitle eyebrow="💛 Who we are" title="Every child is a different color">
-            At COLORS, we believe every child brings a unique color to the world. Our preschool and grade school
-            blend play, discovery and strong academics so children learn with joy — and grow up to be good people.
+            {about.loading ? 'Loading…' : a.intro}
           </SectionTitle>
-          <div className="mv">
-            <article className="card" style={{ background: 'var(--blue)' }}>
-              <h3>🎯 Our Mission</h3>
-              <p>To provide a safe, loving and stimulating environment where young learners develop strong foundations in
-                academics, character and creativity through play-based and hands-on learning.</p>
-            </article>
-            <article className="card" style={{ background: 'var(--pink)' }}>
-              <h3>🔭 Our Vision</h3>
-              <p>A community of happy, curious and compassionate children who are ready to color the world with their
-                talents, kindness and love of learning.</p>
-            </article>
-          </div>
+          {about.error && !about.data && <ErrorNote error={about.error} />}
+          {about.loading ? (
+            <LoadingCards count={2} height={200} />
+          ) : (a.mission || a.vision) && (
+            <div className="mv">
+              {a.mission && (
+                <article className="card" style={{ background: 'var(--blue)' }}>
+                  <h3>🎯 Our Mission</h3>
+                  <p>{a.mission}</p>
+                </article>
+              )}
+              {a.vision && (
+                <article className="card" style={{ background: 'var(--pink)' }}>
+                  <h3>🔭 Our Vision</h3>
+                  <p>{a.vision}</p>
+                </article>
+              )}
+            </div>
+          )}
         </div>
       </section>
 
-      <section className="bg-white">
-        <div className="container">
-          <SectionTitle eyebrow="✨ Our Core Values" title="What C-O-L-O-R-S stands for" />
-          <div className="values">
-            {values.map((v, i) => (
-              <div key={i} className="value" style={{ '--c': v.color }}>
-                <div className="big">{v.letter}</div>
-                <h3>{v.word}</h3>
-                <p>{v.text}</p>
+      {(about.loading || values.length > 0) && (
+        <section className="bg-white">
+          <div className="container">
+            <SectionTitle eyebrow="✨ Our Core Values" title="What we believe in" />
+            {about.loading ? (
+              <LoadingCards count={6} height={150} />
+            ) : (
+              <div className="values">
+                {values.map((v, i) => (
+                  <div key={v._key} className="value" style={{ '--c': palette[i % palette.length] }}>
+                    <div className="big">{v.title?.trim().charAt(0).toUpperCase()}</div>
+                    <h3>{v.title}</h3>
+                    {v.description && <p>{v.description}</p>}
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       <section>
         <div className="container">
           <SectionTitle eyebrow="👩‍🏫 Our Leaders" title="Meet the COLORS team" />
-          <div className="grid">
-            {teachers.map((t) => (
-              <article key={t.name} className="card team" style={{ '--c': t.color }}>
-                <div className="avatar">{t.emoji}</div>
-                <h3>{t.name}</h3>
-                <p>{t.role}</p>
-              </article>
-            ))}
-          </div>
+          <ContentState
+            loading={about.loading}
+            error={about.error}
+            isEmpty={!team.length}
+            empty="Teacher profiles are coming soon! 🍎"
+            skeleton={<LoadingCards count={4} height={240} />}
+          >
+            {() => (
+              <div className="grid">
+                {team.map((t, i) => <Teacher key={t._key} t={t} i={i} />)}
+              </div>
+            )}
+          </ContentState>
         </div>
       </section>
 
-      <section className="bg-white">
-        <div className="container">
-          <SectionTitle eyebrow="🕰️ Our Story" title="Growing together through the years" />
-          <div className="timeline">
-            {milestones.map((m, i) => (
-              <div key={m.year} className="milestone" style={{ '--c': palette[i % palette.length] }}>
-                <strong>{m.year}</strong>{m.text}
+      {(milestones.length > 0 || a.body?.length > 0 || a.heroImage?.asset) && (
+        <section className="bg-white">
+          <div className="container">
+            <SectionTitle eyebrow="🕰️ Our Story" title="Growing together through the years" />
+            {milestones.length > 0 && (
+              <div className="timeline">
+                {milestones.map((m, i) => (
+                  <div key={m._key} className="milestone" style={{ '--c': palette[i % palette.length] }}>
+                    <strong>{m.year}</strong>{m.text}
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
+            {(a.body?.length > 0 || a.heroImage?.asset) && (
+            <div className={`story ${a.heroImage?.asset ? 'has-image' : ''}`} style={milestones.length ? { marginTop: 40 } : undefined}>
+              <SanityImage
+                image={a.heroImage}
+                className="story-image"
+                sizes="(max-width: 860px) 100vw, 480px"
+                maxWidth={1080}
+              />
+              <RichText value={a.body} />
+            </div>
+            )}
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       <section id="enroll">
         <div className="container">
           <div className="enroll">
             <div>
-              <h2>Join the COLORS family! 🎒</h2>
-              <p>Enrollment for School Year 2027–2028 is now open for Toddler Play to Grade 6.</p>
-              <ul>
-                <li>✅ Small classes with caring teachers</li>
-                <li>✅ Safe, secure and child-friendly campus</li>
-                <li>✅ Clubs in arts, music, sports and coding</li>
-                <li>✅ Early-bird discount until December 15</li>
+              <h2>{c.joinTitle || 'Join the COLORS family! 🎒'}</h2>
+              {c.joinText && <p>{c.joinText}</p>}
+              {checklist.length > 0 && (
+                <ul>
+                  {checklist.map((item, i) => <li key={i}>✅ {item}</li>)}
+                </ul>
+              )}
+              <ul className="contact-list" style={{ marginTop: 20 }}>
+                {c.address && <li>📍 {c.address}</li>}
+                {c.phone && <li>📞 {c.phone}</li>}
+                {c.email && <li>✉️ {c.email}</li>}
+                {c.hours && <li>🕖 {c.hours}</li>}
               </ul>
-              <p style={{ marginTop: 20 }}>
-                📍 {school.address}<br />📞 {school.phone}<br />✉️ {school.email}<br />🕖 {school.hours}
-              </p>
             </div>
             <EnrollForm />
           </div>
