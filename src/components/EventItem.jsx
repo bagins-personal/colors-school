@@ -1,31 +1,44 @@
-import { formatDate } from '../data'
+import SanityImage from './SanityImage'
+import { formatDate, formatTime, palette } from '../data'
+import { eventState } from '../lib/events'
 
-export const categoryColor = {
-  Celebration: 'var(--pink)',
-  Academic: 'var(--blue)',
-  Sports: 'var(--green)',
-  Arts: 'var(--purple)',
-  Parents: 'var(--orange)',
-}
+const stateLabel = { upcoming: 'Upcoming', completed: 'Completed', cancelled: 'Cancelled' }
 
-export default function EventItem({ event, past = false }) {
-  const c = categoryColor[event.category] || 'var(--blue)'
+export default function EventItem({ event, index = 0 }) {
+  const state = eventState(event)
+  const c = state === 'cancelled' ? 'var(--pink)' : palette[index % palette.length]
+  const start = event.startDateTime
+  const end = event.endDateTime
+  const sameDay = end && formatDate(start) === formatDate(end)
+  const time = end
+    ? sameDay
+      ? `${formatTime(start)} – ${formatTime(end)}`
+      : `${formatTime(start)} – ${formatDate(end, { month: 'short', day: 'numeric' })}, ${formatTime(end)}`
+    : formatTime(start)
+
   return (
-    <article className={`card event ${past ? 'past' : ''}`} style={{ '--c': c }}>
+    <article className={`card event ${state !== 'upcoming' ? 'past' : ''} ${state}`} style={{ '--c': c }}>
       <div className="date-badge">
-        <span className="m">{formatDate(event.date, { month: 'short' })}</span>
-        <span className="d">{formatDate(event.date, { day: 'numeric' })}</span>
-        <span className="w">{formatDate(event.date, { weekday: 'short' })}</span>
+        <span className="m">{formatDate(start, { month: 'short' })}</span>
+        <span className="d">{formatDate(start, { day: 'numeric' })}</span>
+        <span className="w">{formatDate(start, { weekday: 'short' })}</span>
       </div>
-      <div>
-        <span className="tag" style={{ '--c': c }}>{event.category}</span>
-        <h3>{event.icon} {event.title}</h3>
+      <div className="event-body">
+        <span className="tag" style={{ '--c': state === 'upcoming' ? c : undefined }}>{stateLabel[state]}</span>
+        <h3>{event.title}</h3>
         <div className="meta">
-          <span>🕒 {event.time}</span>
-          <span>📍 {event.place}</span>
+          <span>🕒 {time}</span>
+          {event.location && <span>📍 {event.location}</span>}
         </div>
-        <p>{event.text}</p>
+        {event.description && <p>{event.description}</p>}
       </div>
+      <SanityImage
+        image={event.coverImage}
+        className="event-cover"
+        aspect={1}
+        sizes="(max-width: 640px) 84px, 130px"
+        maxWidth={320}
+      />
     </article>
   )
 }

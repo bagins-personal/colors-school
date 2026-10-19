@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Link, useLocation } from 'react-router-dom'
 import Logo from './Logo'
+import SanityImage from './SanityImage'
+import useSanityQuery from '../hooks/useSanityQuery'
+import { SETTINGS_QUERY } from '../lib/queries'
 
 const links = [
   { to: '/', label: 'Home', emoji: '🏠' },
@@ -13,6 +16,7 @@ const links = [
 export default function Header() {
   const [open, setOpen] = useState(false)
   const { pathname, hash } = useLocation()
+  const { data: settings } = useSanityQuery(SETTINGS_QUERY)
 
   useEffect(() => {
     setOpen(false)
@@ -25,7 +29,15 @@ export default function Header() {
     <header className="site-header">
       <nav className="nav container">
         <Link to="/" className="brand">
-          <Logo />
+          <SanityImage
+            image={settings?.logo}
+            className="brand-logo"
+            sizes="180px"
+            maxWidth={480}
+            alt={settings?.logo?.alt || settings?.siteTitle || 'COLORS'}
+            eager
+            fallback={<Logo />}
+          />
           <small>Preschool &amp; Grade School</small>
         </Link>
         <button
